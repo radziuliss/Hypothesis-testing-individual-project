@@ -1,0 +1,677 @@
+---
+title: "co_2_pl"
+format: html
+editor: visual
+---
+
+## Co2 Total in Poland
+
+Projekt opiera się na danych dotyczących emisji CO2 w różnych krajach. Celem projektu było ustalenie hipotez wyjściowych
+
+i prognoz dotyczących wielkości emisji CO2 w Polsce i innych krajach.
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(dplyr)
+library(lsr)
+co_2 <- read.csv("data-raw/co2_flat.csv", sep = ",")
+
+head(co_2)
+
+poland <- co_2 |>
+  rename(country = Country, iso = ISO.3166.1.alpha.3, year = Year, total_co = Total) |>
+   filter(country == "Poland", year >= 2000) |>
+  select(country, iso, year, total_co, Coal,Oil, Gas, Cement, Flaring, Other)
+
+ukraine <- co_2 |>
+  rename(country = Country, iso = ISO.3166.1.alpha.3, year = Year, total_co = Total) |>
+   filter(country == "Ukraine", year >= 1945) |>
+  select(country, iso, year, total_co)
+
+usa_china <- co_2 |>
+  rename(country = Country, iso = ISO.3166.1.alpha.3, year = Year, total_co = Total) |>
+   filter(country == c("China", "USA"), between(year,1945,2022)) |>
+  select(country, iso, year, total_co)
+
+pol_uk <- co_2 |>
+  rename(country = Country, iso = ISO.3166.1.alpha.3, year = Year, total_co = Total) |>
+   filter(country == c("Ukraine", "Poland"), between(year,1945,2022)) |>
+  select(country, iso, year, total_co)
+  
+  ggplot(data = usa_china, aes(x=year, y=total_co)) +
+  geom_col()
+  
+other <- co_2 |>
+  rename(country = Country, iso = ISO.3166.1.alpha.3, year = Year, total_co = Total) |>
+   filter(country == c("France","China","Germany","Poland", "USA", "Ukraine","Belarus", "Kazakhstan"), year >= 1945) |>
+  select(country, iso, year, total_co)
+```
+
+## Emisja Co2 według krajów
+
+```{r}
+  other |>
+  ggplot(aes(x= year, y = total_co)) +
+  geom_col(color="black", fill = "white") +
+  facet_wrap(~country,ncol = 2) +
+  scale_x_log10() +
+  labs(title="Emisja Co2 według krajów")
+  
+  other|>
+     ggplot( aes(x=year, y=total_co)) + 
+     geom_line() +
+    facet_wrap(~country,ncol = 2) +
+     scale_x_log10() +
+     labs(title="Emisja Co2 według krajów")
+```
+
+```{r}
+mean(poland$total_co)
+ciMean(x=poland$total_co) #przedział ufności 95%
+X <- mean(poland$total_co) 
+S <- sd(poland$total_co) 
+N <- length(poland$total_co)
+
+X+qt(p=.025, df=N-1)*S/sqrt(N) #rozkład t-Studenta, dolna granica ci 
+X+qt(p=.975, df=N-1)*S/sqrt(N)
+```
+
+Z **prawdopodobieństwem 95%** możemy oczekiwać, że **średnia ilość emisji CO2 w Polsce** zawiera się w przedziale **od 277.80 do 324.58 punktu.**
+
+Jakość precyzji oszacowania parametru:
+
+```{r}
+(qt(p=.975, df=N-1)*S/sqrt(N)/X)*100
+```
+
+Wynik jest **poniżej 5%**, a zatem **precyzja oszacowania parametru** średniego emisji CO2 jest wysoka. 
+
+## **Wykres gęstości**
+
+```{r}
+library(ggplot2)
+ co_2 |>
+  filter(between(Year, 1945, 2022)) |>
+  filter(Country %in% c("France", "China", "Germany", "Poland", "USA", "Ukraine","Belarus", "Kazakhstan")) |>
+    select (Country, ISO.3166.1.alpha.3, Total, Year) |>
+  ggplot(aes(x= Total, color = ISO.3166.1.alpha.3)) +
+    labs(x = "Gęstość", y = " Poziom emisji Co2", title = "Gęstość emisji co2 według krajów",
+       caption = "Źródło: Opracowanie własne.", color = "ISO") +
+       scale_x_log10() +
+  geom_density() 
+```
+
+## Wykresy przedziałów ufności
+
+#### Średnie wynki ( wraz z przedziałami ufności) z testu na pisanie w poszczególnych krajach
+
+```{r}
+library(gplots)
+library(sciplot)
+
+bargraph.CI(x.factor = other$country, response = other$total_co, data = other, 
+            xlab = "Country", ylab = "co2(tons)",legend = TRUE, x.leg = 1,angle = 45, cex.names = 0.70)
+```
+
+```{r}
+
+lineplot.CI(x.factor = other$country, response = other$total_co, data = other, 
+            xlab = "Country", ylab = "co2(tons)",legend = TRUE, x.leg = 1,angle = 45, cex.names = 0.7)
+```
+
+## Weryfikacja hipotez
+
+### Kraje UKR i POL średnie się nie różnią?
+
+Weryfikacja hipotezy, iż średni wynik emisji CO2 w krajach (Ukraine i Poland) nie różnią się istotnie. **Założenie: równość wariancji.**
+
+H0 : µUKR = µPOL
+
+H1 : µUKR ≠ µPOL
+
+```{r}
+pol_uk <- other |> 
+  select(country, total_co) |>
+  filter(country=="Ukraine"|country=="Poland")
+
+
+independentSamplesTTest(formula = total_co ~ country, 
+data = pol_uk, 
+var.equal = TRUE)
+```
+
+```{r}
+t.test(formula = total_co ~ country, data = pol_uk, var.equal = TRUE)
+```
+
+`p-value = 0.2805 znaczy że nie różnią się istotnie`
+
+**Przedział ufności**
+
+```{r}
+384.05 - 299.63
+```
+
+**Wartość krytyczna:**
+
+```{r}
+qt(p = .975, df=18) #wartość krytyczna dla testu dwustronnego na poziomie istotności α=.05
+
+qt(p = c(.95,.975, .995, .9995), df=18) # wartość krytyczna dla testu dwustronnego na poziomie istotności alfa= .1, .05, .01, .001
+# 2.58076
+```
+
+**t=1.113** **\< 1.734064** hipoteza H0 jest **nie ma podstaw do odrzucenia**
+
+**Estiamted effect size(Cohen's): 0.498** prawie 0.5 co oznacza moderate effect rough interoretation
+
+**WNIOSEK:** Na podstawie uzyskanych wyników p-value i t-test **srednie** **emisja CO2 w obodwu krajach się nie różni**.
+
+### Kraje UKR i FRA średnie się nie różnią według emisji Co2?
+
+Weryfikacja hipotezy, iż średni wynik emisji CO2 w krajach (Ukraine i Poland) nie różnią się istotnie. **Założenie: równość wariancji.**
+
+```{r}
+fra_ukr <- other |>
+  filter(country=="France"|country=="Ukraine")
+```
+
+H0 : µUKR = µFRA
+
+H1 : µUKR ≠ µFRA
+
+```{r}
+independentSamplesTTest(formula = total_co ~ country, 
+data = fra_ukr, 
+var.equal = TRUE) 
+```
+
+```{r}
+t.test(formula = total_co ~ country, 
+       data = fra_ukr,
+       var.equal = TRUE)
+
+```
+
+**Przedział ufności dla różnicy między średnimi z obu krajów:**
+
+```{r}
+
+372.33-371.6
+
+# wartości krytyczne dla testu dwustronnego na poziomie istotności alfa= .1, .05, .01, .001
+
+qnorm(p = c(.95, .975, .995, .9995)) 
+```
+
+**WNIOSKI:**
+
+*t= 0.009* \< **`1.64`**`(a =.1) (test dwustronny)` **Nie odrzucamy hipotezę zerowej, co oznacza, że emesja CO2 we Francji i Ukrainie się nie różni.**
+
+Też mamy be estimated size (Cohen's d): **0.004.**
+
+**Co do wartości krytycznej**:
+
+```{r}
+qt(p = .995, df=17) #wartość krytyczna dla testu dwustronnego na poziomie istotności α=.001
+
+qt( p = c(.95,.975, .995, .9995), df=17) # wartość krytyczna dla testu dwustronnego na poziomie istotności alfa= .1, .05, .01, .001
+# 2.58076
+```
+
+**t=0.009026 \< 1,7396** - hipoteza zerowa jest nie odrzucona na wszystkich poziomach
+
+***Średnie wyniki emisji CO2 w krajach jak Francja i Ukraina istotnie się nie różnią.*** 
+
+### Kraje USA i CHN średnie wyniki istotnie większe?
+
+Weryfikacja hipotezy, że średni wynik emisji CO2 w Chinach jest większy od średniego wyniku emisji CO2 w Stanach Zjednoczonych.
+
+**Założenie: nierówność wariancji w populacji.**
+
+Test lewostronny: 
+
+H0 : µUSA ≤ µCHN 
+
+H1 : µUSA \> µCHN.
+
+```{r}
+independentSamplesTTest(formula = total_co ~ country, 
+data = usa_china, one.sided = "China")
+
+```
+
+```{r}
+t.test (formula = total_co ~ country, data = usa_china, alternative = "less")
+
+```
+
+```{r}
+qt( p = c(.95,.975, .995, .9995), df=46) # wartość krytyczna dla testu dwustronnego na poziomie istotności alfa= .1, .05, .01, .001
+# 2.58076
+```
+
+Okazało się, że średni wynik emisji CO2 w Stanach Zjednoczonych jest większy od średniego wyniku emisji CO2 w Chinach w okresie od 1945 roku do 2021.
+
+### Średni wynik ogółem Chiny i USA
+
+```{r}
+
+mean(usa_china$total_co, na.rm = TRUE)
+sd(usa_china$total_co, na.rm = TRUE)
+
+```
+
+Weryfikacja hipotezy:
+
+H0 : µ = 5000 
+
+H1 : µ ≠ 5000
+
+```{r}
+t.score <- (mean(usa_china$total_co)-5000)/(sd(usa_china$total_co)/sqrt(77)) 
+print(t.score)
+
+
+```
+
+```{r}
+qt( p = c(.95, .975, .995, .9995), df=76 )
+
+
+```
+
+**-3.91395 \> 3.4** dla **α=.05** *(test dwustronny)* - **odrzucić H0 na poziomie istotności .05** 
+
+Na podstawie testu t można stwierdzić że średnia ze emisji CO2 w Chinach i USA jest istotnie różna od 5000 ton emisji CO2
+
+Test prawostronny: 
+
+H0 : µ ≤ 4500
+
+H1 : µ \> 4500
+
+```{r}
+oneSampleTTest( x=usa_china$total_co, mu=4500, one.sided="greater")
+```
+
+```{r}
+t.test(x=usa_china$total_co, mu=4500, alternative = "greater")
+```
+
+```{r}
+qt(p = c(.95, .975, .995, .9995), df=76)
+```
+
+**t=2.25 \> 1.991673** dla α=.05 (test jednostronny) - **odrzucić H0 na poziomie istotności .05 i przyjęcie na poziomie .01**
+
+Średni wynik testu **nie przekracza** wartości 4500. 
+
+```{r}
+mean(usa_china$total_co)
+
+
+```
+
+### Cohen's d
+
+```{r}
+cohensD( x = usa_china$total_co, mu = 4500)
+
+(mean(usa_china$total_co) - 4500 ) / sd(usa_china$total_co)
+```
+
+**Średnie wyniki nieznacznie różnią się od 4500.**
+
+## Prognozowanie
+
+```{r}
+poland_ts <- ts(poland$total_co, start=c(2000,1), frequency = 1)
+print(poland_ts, calendar = TRUE)
+view(poland)
+
+
+#Podział zbioru danych na zbiór uczący (2001-2016) i testowy do prognoz (2017-2021)
+
+# zbiór uczący
+poland_learn <- window(poland_ts, end=c(2016,1)) #zbiór uczący
+print(poland_learn, calendar = TRUE)
+
+#zbiór testowy
+poland_test <- window(poland_ts, start=c(2017,1)) 
+print(poland_test, calendar = TRUE)
+```
+
+### **Wskazywanie trendów**
+
+```{r}
+# Wprowadzenie zmiennej czasowej
+
+t <- 1:17 #kolejne numery okresów
+t_2 <- t^2
+t_3 <- t^3
+t_4 <- t^4
+t_5 <- t^5
+t_ln <- log(t)
+
+library(forecast)
+
+ # Trend liniowy
+
+poland_1st <- tslm(poland_learn ~ trend)
+summary(poland_1st)
+plot(poland_learn, main="Trend liniowy") #wykres pierwotnego szeregu
+lines(fitted(poland_1st), col="green") #dodanie do wykresu linii trendu
+
+
+
+ # Wielomian stopnia drugiego
+
+poland_2st <- tslm(poland_learn ~ t+t_2)
+summary(poland_2st)
+plot(poland_learn, main="Wielomian stopnia drugiego")
+lines(fitted(poland_2st), col="green")
+
+
+
+ # Wielomian stopnia trzeciego
+
+poland_3st <- tslm(poland_learn ~ t+t_2+t_3)
+summary(poland_3st)
+plot(poland_learn, main="Wielomian stopnia trzeciego")
+lines(fitted(poland_3st), col="green")
+
+
+# Wielomian stopnia czwartego
+
+poland_4st <- tslm(poland_learn ~ t+t_2+t_3+t_4)
+summary(poland_4st)
+plot(poland_learn, main="Wielomian stopnia czwartego")
+lines(fitted(poland_4st), col="green")
+
+
+# Wielomian stopnia piątego
+
+poland_5st <- tslm(poland_learn ~ t+t_2+t_3+t_4+t_5)
+summary(poland_5st)
+plot(poland_learn, main="Wielomian stopnia piątego")
+lines(fitted(poland_5st), col="green")
+
+
+
+# Trend logarytmiczny
+
+poland_log <- tslm(poland_learn ~ t_ln)
+summary(poland_log)
+plot(poland_learn, main="Trend logarytmiczny")
+lines(fitted(poland_log), col="green")
+
+
+
+#Trend wykładniczy y'=a*e^(a0*t)
+
+poland_wyk <- lm(log(poland_learn)~ t)
+summary(poland_wyk)
+a_wyk <- exp(coef(poland_wyk)[1]) 
+a_wyk
+#obliczamy wartości teoretyczne, tworząc zbiór klasy ts
+poland_wyk2 <- ts(a_wyk*exp(coef(poland_wyk)[2]*t), start = 2001)
+print(poland_wyk2, calendar = TRUE)
+plot(poland_learn, main="Trend wykładniczy")
+lines(poland_wyk2, col="green")
+
+
+
+#Trend potęgowy y'=a*t^a0
+
+poland_pot <- tslm(log(poland_learn)~ t_ln)
+summary(poland_pot)
+#log(wynagrodzenie_learn) = 7.45020 + 0.27497*t_ln
+#ustalamy współczynnik a w równaniu a*t^a0
+a_pot <- exp(coef(poland_pot)[1])
+a_pot
+#obliczamy wartości teoretyczne, tworząc zbiór klasy ts
+poland_pot2 <- ts(a_pot*t^coef(poland_pot)[2], start = 2001)
+print(poland_pot2, calendar = TRUE)
+plot(poland_learn, main="Trend potęgowy")
+lines(poland_pot2, col="green")
+
+
+
+
+#wyznaczone trendy przedstawiamy na jednym wykresie
+
+plot(poland_learn, main="co_2 oraz dopasowane trendy")
+#linie poziome i pionowe:
+grid()
+#dodanie wyznaczonych linii trendu
+lines(fitted(poland_1st), col="green", lty=2) #funkcja lty oznacza styl linii
+lines(fitted(poland_2st), col="red", lty=2)
+lines(fitted(poland_3st), col="blue", lty=2)
+lines(fitted(poland_4st), col="yellow", lty=2)
+lines(fitted(poland_5st), col="grey", lty=2)
+lines(fitted(poland_log), col="pink", lty=2)
+lines(poland_wyk2, col="yellow4", lty=2)
+lines(poland_pot2, col="green4", lty=2)
+```
+
+### **Prognoza**
+
+```{r}
+t_prog <- 18:22
+t_prog_2 <- t_prog^2
+t_prog_3 <- t_prog^3
+t_prog_4 <- t_prog^4
+t_prog_5 <- t_prog^5
+t_prog_ln <- log(t_prog)
+
+library(forecast)
+# Prognoza na podstawie trendu liniowego
+
+st_1_prognoza <- forecast(poland_1st, h=5)
+summary(st_1_prognoza)
+
+
+# Prognoza na podstawie wielomianu 2 stopnia
+
+newtime_2 <- data.frame('t'=t_prog, 't_2'=t_prog_2) #nowe dane do modelu na potrzeby prognozy
+print(newtime_2)
+st_2_prognoza <- forecast(poland_2st, newtime_2)
+summary(st_2_prognoza)
+
+# Prognoza na podstawie wielomianu 3 stopnia
+
+newtime_3 <- data.frame('t'=t_prog, 't_2'=t_prog_2, 't_3'=t_prog_3)
+print(newtime_3)
+st_3_prognoza <- forecast(poland_3st, newtime_3)
+summary(st_3_prognoza)
+
+
+# Prognoza na podstawie wielomianu 4 stopnia
+
+newtime_4 <- data.frame('t'=t_prog, 't_2'=t_prog_2, 't_3'=t_prog_3, 't_4'=t_prog_4)
+print(newtime_4)
+st_4_prognoza <- forecast(poland_4st, newtime_4)
+summary(st_4_prognoza)
+
+
+# Prognoza na podstawie wielomianu 5 stopnia
+
+newtime_5 <- data.frame('t'=t_prog, 't_2'=t_prog_2, 't_3'=t_prog_3, 't_4'=t_prog_4, 't_5'=t_prog_5)
+print(newtime_5)
+st_5_prognoza <- forecast(poland_5st, newtime_5)
+summary(st_5_prognoza)
+
+
+# Prognoza na podstawie trendu logarytmicznego
+
+newtime_ln <- data.frame('t_ln'=t_prog_ln)
+log_prognoza <- forecast(poland_log, newtime_ln)
+summary(log_prognoza)
+
+
+# Prognoza na podstawie trendu wykładniczego
+
+newtime_wyk <- data.frame('t'=t_prog)
+wyk_prognoza <- forecast(poland_wyk, newtime_wyk)
+wyk_prognoza
+wyk_prognoza2 <- ts(exp(wyk_prognoza$mean), start=2017)
+print(wyk_prognoza2, calendar=TRUE)
+
+
+
+# Prognoza na podstawie trendu potęgowego
+
+pot_prognoza <- forecast(poland_pot, newtime_ln)
+pot_prognoza
+pot_prognoza2 <- ts(exp(pot_prognoza$mean), start=2017)
+print(pot_prognoza2, calendar=TRUE)
+
+```
+
+### Błędy prognoz
+
+```{r}
+#instalacja pakietu zwierającego błędy prognoz
+
+# install.packages("MLmetrics")
+library(MLmetrics)
+
+#błędy dla trendu liniowego
+
+RMSE_lin <- RMSE(y_pred = st_1_prognoza$mean, y_true = poland_test)
+RMSE_lin
+MAPE_lin <- MAPE(y_pred = st_1_prognoza$mean, y_true = poland_test)
+MAPE_lin
+
+
+#błędy dla wielomianu stopnia 2
+
+RMSE_2 <- RMSE(y_pred = st_2_prognoza$mean, y_true = poland_test)
+RMSE_2
+MAPE_2 <- MAPE(y_pred = st_2_prognoza$mean, y_true = poland_test)
+MAPE_2
+
+
+#błędy dla wielomianu stopnia 3
+
+RMSE_3 <- RMSE(y_pred = st_3_prognoza$mean, y_true = poland_test)
+RMSE_3
+MAPE_3 <- MAPE(y_pred = st_3_prognoza$mean, y_true = poland_test)
+MAPE_3
+
+
+#błędy dla wielomianu stopnia 4
+
+RMSE_4 <- RMSE(y_pred = st_4_prognoza$mean, y_true = poland_test)
+RMSE_4
+MAPE_4 <- MAPE(y_pred = st_4_prognoza$mean, y_true = poland_test)
+MAPE_4
+
+
+#błędy dla wielomianu stopnia 5
+
+RMSE_5 <- RMSE(y_pred = st_5_prognoza$mean, y_true = poland_test)
+RMSE_5
+MAPE_5 <- MAPE(y_pred = st_5_prognoza$mean, y_true = poland_test)
+MAPE_5
+
+
+#błędy dla trendu logarytmicznego
+
+RMSE_log <- RMSE(y_pred = log_prognoza$mean, y_true = poland_test)
+RMSE_log
+MAPE_log <- MAPE(y_pred = log_prognoza$mean, y_true = poland_test)
+MAPE_log
+
+
+#błędy dla trendu wykładniczego
+
+RMSE_wyk <- RMSE(y_pred = exp(wyk_prognoza$mean), y_true = poland_test)
+RMSE_wyk
+MAPE_wyk <- MAPE(y_pred = exp(wyk_prognoza$mean), y_true = poland_test)
+MAPE_wyk
+
+
+#błędy dla trendu potęgowego
+RMSE_pot <- RMSE(y_pred = exp(pot_prognoza$mean), y_true = poland_test)
+RMSE_pot
+MAPE_pot <- MAPE(y_pred = exp(pot_prognoza$mean), y_true = poland_test)
+MAPE_pot
+
+
+#zestawienie RMSE dla wszystkich modeli
+
+RMSE <- c(RMSE_lin, RMSE_2, RMSE_3, RMSE_4, RMSE_5, RMSE_log, RMSE_wyk, RMSE_pot)
+names(RMSE) <- c("liniowy", "2 stopień", "3 stopień", "4 stopień", "5 stopień", "logarytmiczny", "wykładniczy", "potęgowy")
+RMSE
+
+
+#zestawienie MAPE dla wszystkich modeli
+
+MAPE <- c(MAPE_lin, MAPE_2, MAPE_3, MAPE_4, MAPE_5, MAPE_log, MAPE_wyk, MAPE_pot)
+names(MAPE) <- c("liniowy", "2 stopień", "3 stopień", "4 stopień", "5 stopień", "logarytmiczny", "wykładniczy", "potęgowy")
+MAPE
+```
+
+**Najmniejszy błąd popełnia wykładniczy.**
+
+## PROGNOZA NA ROK 2022 i 2023 EMISJA CO_2 POLSKA
+
+```{r}
+
+# Wyznaczenie parametrów dla wybranej na podstawie MAPE funkcji zlinearyzowanego trendu wykładniczego
+
+t_all <- 1:22
+poland_wyk_all <- lm(log(poland_ts) ~t_all)
+summary(poland_wyk_all)
+
+
+# Wyznaczenie wartości na rok 2022 i 2023 na podstawie zlinearyzowanego trendu wykładniczego
+
+newtime_wyk_all <- data.frame('t_all'=22:23)
+newtime_wyk_all
+wyk_prognoza_all <- forecast(poland_wyk_all, newtime_wyk_all)
+summary(wyk_prognoza_all)
+
+# Obliczenie wartości "odlinearyzowanych"
+
+wyk_prognoza2_all <- ts(exp(wyk_prognoza_all$mean), start=2022)
+wyk_prognoza2_all
+print(wyk_prognoza2_all, calendar = TRUE)
+
+
+
+# Ustalenie dolnej granicy przedziału ufności
+
+wyk_prognoza2_all_Lo_95 <- ts(exp(wyk_prognoza_all$lower[,2]), start=2022)
+print(wyk_prognoza2_all_Lo_95, calendar = TRUE)
+
+
+# Ustalenie górnej granicy przedziału ufności
+
+wyk_prognoza2_all_Up_95 <- ts(exp(wyk_prognoza_all$upper[,2]), start=2022)
+print(wyk_prognoza2_all_Up_95, calendar = TRUE)
+
+
+
+# Stworzenie zestawienia wyników (macierz)
+
+wyniki_wyk <- matrix(c(wyk_prognoza2_all, wyk_prognoza2_all_Lo_95, wyk_prognoza2_all_Up_95), nrow=2, ncol = 3)
+rownames(wyniki_wyk) <- c("2022", "2023")
+colnames(wyniki_wyk) <- c("Point Forecast", "Lo 95", "Hi 95")
+wyniki_wyk
+
+
+# Alternatywna prognoza na podstawie trendu liniowego
+
+poland_1st_all <- tslm(poland_ts ~ t_all)
+summary(poland_1st_all)
+plot(poland_ts)
+lines(fitted(poland_1st_all), col="green")
+newtime_1_all <- data.frame('t_all'=22:23)
+newtime_1_all
+st_1_prognoza_all <- forecast(poland_1st_all, newtime_1_all)
+summary(st_1_prognoza_all)
+```
